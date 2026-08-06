@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Camera, Clock, RotateCcw, Square, Target, Trash2, Video } from "lucide-react";
-import { Camera as MediaPipeCamera } from "@mediapipe/camera_utils";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
 import { Pose, POSE_CONNECTIONS } from "@mediapipe/pose";
 import "./styles.css";
@@ -105,6 +104,48 @@ function formatDuration(totalSeconds) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function getCameraErrorMessage(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+    return "Izin kamera diblokir. Klik ikon gembok/setting di kiri address bar, ubah Camera ke Allow, lalu tekan Start lagi.";
+  }
+
+  if (error?.name === "NotFoundError" || error?.name === "DevicesNotFoundError") {
+    return "Kamera tidak ditemukan. Pastikan webcam terpasang dan tidak dimatikan oleh sistem.";
+  }
+
+  if (error?.name === "NotReadableError" || error?.name === "TrackStartError") {
+    return "Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera/meeting lain lalu coba lagi.";
+  }
+
+  if (error?.name === "OverconstrainedError" || error?.name === "ConstraintNotSatisfiedError") {
+    return "Mode kamera yang dipilih tidak tersedia. Coba ganti Kamera ke Depan atau Belakang.";
+  }
+
+  return "Gagal membuka kamera. Pastikan halaman HTTPS, izin kamera Allow, dan browser punya akses ke webcam.";
+}
+
+function waitForVideoMetadata(video) {
+  if (video.readyState >= 1) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", handleLoaded);
+      video.removeEventListener("error", handleError);
+    };
+    const handleLoaded = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Video metadata gagal dimuat."));
+    };
+
+    video.addEventListener("loadedmetadata", handleLoaded, { once: true });
+    video.addEventListener("error", handleError, { once: true });
+  });
+}
+
 function calculateAngle(firstPoint, middlePoint, lastPoint) {
   const firstVector = { x: firstPoint.x - middlePoint.x, y: firstPoint.y - middlePoint.y };
   const lastVector = { x: lastPoint.x - middlePoint.x, y: lastPoint.y - middlePoint.y };
@@ -189,8 +230,11 @@ function usePersistentState(key, fallback, normalize = (value) => value) {
 function usePushUpCounter() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const cameraRef = useRef(null);
+  const streamRef = useRef(null);
   const poseRef = useRef(null);
+  const frameRequestRef = useRef(null);
+  const frameBusyRef = useRef(false);
+  const lastVideoTimeRef = useRef(-1);
   const movementStateRef = useRef("ready");
   const statsRef = useRef(initialStats);
   const elapsedRef = useRef(0);
@@ -440,15 +484,55 @@ function usePushUpCounter() {
     return pose;
   }, [drawResults]);
 
+  const stopFrameLoop = useCallback(() => {
+    if (frameRequestRef.current !== null) {
+      window.cancelAnimationFrame(frameRequestRef.current);
+      frameRequestRef.current = null;
+    }
+
+    frameBusyRef.current = false;
+    lastVideoTimeRef.current = -1;
+  }, []);
+
+  const startFrameLoop = useCallback(() => {
+    const tick = async () => {
+      const video = videoRef.current;
+      const pose = poseRef.current;
+
+      if (!video || !pose || video.paused || video.ended) {
+        frameRequestRef.current = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      if (!frameBusyRef.current && video.currentTime !== lastVideoTimeRef.current) {
+        frameBusyRef.current = true;
+        lastVideoTimeRef.current = video.currentTime;
+
+        try {
+          await pose.send({ image: video });
+        } catch (error) {
+          console.error(error);
+        } finally {
+          frameBusyRef.current = false;
+        }
+      }
+
+      frameRequestRef.current = window.requestAnimationFrame(tick);
+    };
+
+    stopFrameLoop();
+    frameRequestRef.current = window.requestAnimationFrame(tick);
+  }, [stopFrameLoop]);
+
   const stopCamera = useCallback(() => {
     saveSession();
-    cameraRef.current?.stop();
-    cameraRef.current = null;
+    stopFrameLoop();
 
-    const stream = videoRef.current?.srcObject;
+    const stream = streamRef.current || videoRef.current?.srcObject;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
     }
 
     const canvas = canvasRef.current;
@@ -462,7 +546,7 @@ function usePushUpCounter() {
       feedback: "Kamera berhenti. Sesi tersimpan bila ada repetisi.",
       feedbackTone: "normal",
     }));
-  }, [saveSession, setStats]);
+  }, [saveSession, setStats, stopFrameLoop]);
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -485,22 +569,35 @@ function usePushUpCounter() {
     sessionSavedRef.current = false;
     setStats((current) => ({
       ...current,
-      feedback: "Menyiapkan kamera dan model pose...",
+      feedback: "Meminta izin kamera...",
       feedbackTone: "normal",
     }));
 
     try {
       poseRef.current = poseRef.current || createPose();
-      cameraRef.current = new MediaPipeCamera(videoRef.current, {
-        width: 1280,
-        height: 720,
-        facingMode: cameraMode,
-        onFrame: async () => {
-          await poseRef.current.send({ image: videoRef.current });
-        },
-      });
+      stopFrameLoop();
 
-      await cameraRef.current.start();
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: cameraMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      const video = videoRef.current;
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+
+      await waitForVideoMetadata(video);
+      await video.play();
+
+      startFrameLoop();
       setIsRunning(true);
       setStats((current) => ({
         ...current,
@@ -509,15 +606,20 @@ function usePushUpCounter() {
       }));
     } catch (error) {
       console.error(error);
+      stopFrameLoop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
+
       setStats((current) => ({
         ...current,
-        feedback: "Gagal membuka kamera. Periksa izin browser dan gunakan localhost atau HTTPS.",
+        feedback: getCameraErrorMessage(error),
         feedbackTone: "error",
       }));
     } finally {
       setIsLoading(false);
     }
-  }, [cameraMode, createPose, setStats]);
+  }, [cameraMode, createPose, setStats, startFrameLoop, stopFrameLoop]);
 
   const clearHistory = useCallback(() => {
     setHistory([]);
@@ -547,11 +649,11 @@ function usePushUpCounter() {
 
   useEffect(
     () => () => {
-      cameraRef.current?.stop();
-      const stream = videoRef.current?.srcObject;
+      stopFrameLoop();
+      const stream = streamRef.current || videoRef.current?.srcObject;
       stream?.getTracks().forEach((track) => track.stop());
     },
-    [],
+    [stopFrameLoop],
   );
 
   return {
