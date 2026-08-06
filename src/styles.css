@@ -160,12 +160,14 @@ h1 {
 }
 
 .input-video {
-  opacity: 0;
+  z-index: 0;
+  opacity: 1;
   pointer-events: none;
 }
 
 .output-canvas {
   z-index: 1;
+  pointer-events: none;
 }
 
 .camera-placeholder {

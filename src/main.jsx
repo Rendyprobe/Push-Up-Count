@@ -282,6 +282,7 @@ function usePushUpCounter() {
   const frameRequestRef = useRef(null);
   const frameBusyRef = useRef(false);
   const lastVideoTimeRef = useRef(-1);
+  const poseErrorCountRef = useRef(0);
   const movementStateRef = useRef("ready");
   const statsRef = useRef(initialStats);
   const elapsedRef = useRef(0);
@@ -539,6 +540,7 @@ function usePushUpCounter() {
 
     frameBusyRef.current = false;
     lastVideoTimeRef.current = -1;
+    poseErrorCountRef.current = 0;
   }, []);
 
   const startFrameLoop = useCallback(() => {
@@ -557,8 +559,20 @@ function usePushUpCounter() {
 
         try {
           await pose.send({ image: video });
+          poseErrorCountRef.current = 0;
         } catch (error) {
           console.error(error);
+          poseErrorCountRef.current += 1;
+
+          if (poseErrorCountRef.current === 1) {
+            setStats((current) => ({
+              ...current,
+              phase: "Kamera aktif",
+              feedback:
+                "Kamera sudah terbuka, tapi model pose belum bisa dimuat. Preview tetap tampil; counter mulai bekerja setelah model siap.",
+              feedbackTone: "warning",
+            }));
+          }
         } finally {
           frameBusyRef.current = false;
         }
@@ -569,7 +583,7 @@ function usePushUpCounter() {
 
     stopFrameLoop();
     frameRequestRef.current = window.requestAnimationFrame(tick);
-  }, [stopFrameLoop]);
+  }, [setStats, stopFrameLoop]);
 
   const stopCamera = useCallback(() => {
     saveSession();
