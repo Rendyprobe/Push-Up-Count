@@ -633,8 +633,8 @@ function App() {
     <main className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">React + MediaPipe</p>
-          <h1>Push-Up Counter</h1>
+          <p className="eyebrow">Local pose tracking</p>
+          <h1>Push-Up Studio</h1>
         </div>
         <div className={`run-chip ${isRunning ? "is-live" : ""}`}>
           <span aria-hidden="true" />
@@ -643,59 +643,102 @@ function App() {
       </header>
 
       <section className="workspace" aria-label="Kamera penghitung push-up">
-        <div className={`camera-panel ${isRunning ? "is-active" : ""}`}>
-          <video ref={videoRef} className="input-video" playsInline muted />
-          <canvas ref={canvasRef} className="output-canvas" width="1280" height="720" />
-          <div className="camera-placeholder">
-            <Camera size={34} aria-hidden="true" />
-            <span>Kamera belum aktif</span>
+        <section className="stage-card" aria-label="Area kamera">
+          <div className={`camera-panel ${isRunning ? "is-active" : ""}`}>
+            <video ref={videoRef} className="input-video" playsInline muted />
+            <canvas ref={canvasRef} className="output-canvas" width="1280" height="720" />
+            <div className="camera-placeholder">
+              <Camera size={36} aria-hidden="true" />
+              <span>Kamera belum aktif</span>
+            </div>
+            <div className="camera-hud" aria-label="Ringkasan sesi">
+              <div>
+                <span>Status</span>
+                <strong>{stats.phase}</strong>
+              </div>
+              <div>
+                <span>Tracking</span>
+                <strong>{stats.quality === null ? "-" : `${stats.quality}%`}</strong>
+              </div>
+              <div>
+                <span>Sisi</span>
+                <strong>{stats.side ?? "-"}</strong>
+              </div>
+            </div>
           </div>
-          <div className="camera-hud" aria-label="Ringkasan sesi">
-            <div>
-              <span>Reps</span>
+
+          <div className="stage-dock">
+            <div className="rep-meter">
+              <span>Repetisi</span>
               <strong>{stats.count}</strong>
             </div>
-            <div>
-              <span>Durasi</span>
-              <strong>{formatDuration(elapsedSeconds)}</strong>
+
+            <div className="target-panel">
+              <div className="target-row">
+                <div>
+                  <span>Target</span>
+                  <strong>{settings.targetCount} reps</strong>
+                </div>
+                <div>
+                  <span>Durasi</span>
+                  <strong>{formatDuration(elapsedSeconds)}</strong>
+                </div>
+              </div>
+              <div className="progress-track" aria-label="Progress target">
+                <span style={{ width: `${targetProgress}%` }} />
+              </div>
             </div>
-            <div>
-              <span>Status</span>
-              <strong>{stats.phase}</strong>
+
+            <div className="actions">
+              <button type="button" onClick={startCamera} disabled={isRunning || isLoading}>
+                <Camera size={18} aria-hidden="true" />
+                {isLoading ? "Loading" : "Start"}
+              </button>
+              <button type="button" className="secondary" onClick={stopCamera} disabled={!isRunning}>
+                <Square size={18} aria-hidden="true" />
+                Stop
+              </button>
+              <button type="button" className="ghost" onClick={resetCounter}>
+                <RotateCcw size={18} aria-hidden="true" />
+                Reset
+              </button>
             </div>
           </div>
-        </div>
 
-        <aside className="control-panel">
-          <div className="counter-block">
-            <div>
-              <span className="counter-label">Repetisi</span>
-              <strong>{stats.count}</strong>
+          <p className={`feedback stage-feedback is-${stats.feedbackTone}`}>{stats.feedback}</p>
+        </section>
+
+        <aside className="side-stack" aria-label="Panel kontrol">
+          <section className="side-card">
+            <div className="card-heading">
+              <div>
+                <span>Ringkasan</span>
+                <strong>{targetProgress}% selesai</strong>
+              </div>
+              <div className="target-pill">
+                <Target size={15} aria-hidden="true" />
+                <span>{settings.targetCount}</span>
+              </div>
             </div>
-            <div className="target-pill">
-              <Target size={16} aria-hidden="true" />
-              <span>{settings.targetCount} target</span>
+
+            <div className="metrics-grid">
+              <Metric label="Status" value={stats.phase} />
+              <Metric label="Sudut siku" value={stats.angle === null ? "-" : `${stats.angle}°`} />
+              <Metric label="Body line" value={stats.bodyLine === null ? "-" : `${stats.bodyLine}°`} />
+              <Metric label="Tracking" value={stats.quality === null ? "-" : `${stats.quality}%`} />
             </div>
-          </div>
+          </section>
 
-          <div className="progress-track" aria-label="Progress target">
-            <span style={{ width: `${targetProgress}%` }} />
-          </div>
+          <section className="side-card settings-card">
+            <div className="card-heading">
+              <div>
+                <span>Kalibrasi</span>
+                <strong>Kamera & threshold</strong>
+              </div>
+            </div>
 
-          <div className="metrics-grid">
-            <Metric label="Status" value={stats.phase} />
-            <Metric label="Durasi" value={formatDuration(elapsedSeconds)} />
-            <Metric label="Sudut siku" value={stats.angle === null ? "-" : `${stats.angle}°`} />
-            <Metric label="Body line" value={stats.bodyLine === null ? "-" : `${stats.bodyLine}°`} />
-            <Metric label="Tracking" value={stats.quality === null ? "-" : `${stats.quality}%`} />
-            <Metric label="Sisi" value={stats.side ?? "-"} />
-          </div>
-
-          <p className={`feedback is-${stats.feedbackTone}`}>{stats.feedback}</p>
-
-          <div className="settings-panel">
-            <div className="settings">
-              <label htmlFor="cameraMode">Kamera</label>
+            <label className="settings" htmlFor="cameraMode">
+              <span>Kamera</span>
               <select
                 id="cameraMode"
                 value={cameraMode}
@@ -705,7 +748,7 @@ function App() {
                 <option value="user">Depan</option>
                 <option value="environment">Belakang</option>
               </select>
-            </div>
+            </label>
 
             <div className="tuning-grid">
               <NumberField
@@ -733,24 +776,9 @@ function App() {
                 onChange={(value) => updateSetting("upAngle", value)}
               />
             </div>
-          </div>
+          </section>
 
-          <div className="actions">
-            <button type="button" onClick={startCamera} disabled={isRunning || isLoading}>
-              <Camera size={18} aria-hidden="true" />
-              {isLoading ? "Loading" : "Start"}
-            </button>
-            <button type="button" className="secondary" onClick={stopCamera} disabled={!isRunning}>
-              <Square size={18} aria-hidden="true" />
-              Stop
-            </button>
-            <button type="button" className="ghost" onClick={resetCounter}>
-              <RotateCcw size={18} aria-hidden="true" />
-              Reset
-            </button>
-          </div>
-
-          <section className="history-panel" aria-label="Histori sesi">
+          <section className="side-card history-panel" aria-label="Histori sesi">
             <div className="history-header">
               <div>
                 <span>Histori</span>
@@ -788,7 +816,7 @@ function App() {
             </div>
           </section>
 
-          <div className="privacy-note">
+          <div className="privacy-note side-card">
             <Video size={16} aria-hidden="true" />
             <span>Video diproses lokal di browser.</span>
           </div>
