@@ -201,12 +201,11 @@ function calculateAngle(firstPoint, middlePoint, lastPoint) {
   return Math.abs((Math.atan2(cross, dot) * 180) / Math.PI);
 }
 
-function drawImageContain(context, image, canvasWidth, canvasHeight) {
+function getContainFrame(image, canvasWidth, canvasHeight) {
   const imageWidth = image.videoWidth || image.naturalWidth || image.width;
   const imageHeight = image.videoHeight || image.naturalHeight || image.height;
 
   if (!imageWidth || !imageHeight) {
-    context.drawImage(image, 0, 0, canvasWidth, canvasHeight);
     return { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
   }
 
@@ -216,7 +215,6 @@ function drawImageContain(context, image, canvasWidth, canvasHeight) {
   const x = (canvasWidth - width) / 2;
   const y = (canvasHeight - height) / 2;
 
-  context.drawImage(image, x, y, width, height);
   return { x, y, width, height };
 }
 
@@ -475,9 +473,7 @@ function usePushUpCounter() {
 
       context.save();
       context.clearRect(0, 0, canvas.width, canvas.height);
-      context.fillStyle = "#080a0b";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      const videoFrame = drawImageContain(context, results.image, canvas.width, canvas.height);
+      const videoFrame = getContainFrame(results.image, canvas.width, canvas.height);
 
       if (results.poseLandmarks) {
         const displayLandmarks = mapLandmarksToFrame(
