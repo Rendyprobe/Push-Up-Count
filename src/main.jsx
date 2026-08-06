@@ -635,6 +635,19 @@ function usePushUpCounter() {
 
       const stream = await getCameraStream(cameraMode);
       streamRef.current = stream;
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          setIsRunning(false);
+          stopFrameLoop();
+          setStats((current) => ({
+            ...current,
+            phase: "Kamera berhenti",
+            feedback:
+              "Stream kamera dihentikan browser atau sistem. Coba tutup app lain yang memakai kamera lalu tekan Start lagi.",
+            feedbackTone: "error",
+          }));
+        };
+      });
 
       const video = videoRef.current;
       video.srcObject = stream;
@@ -651,15 +664,6 @@ function usePushUpCounter() {
         feedback: "Kamera aktif. Menyiapkan model pose...",
         feedbackTone: "normal",
       }));
-
-      poseRef.current = poseRef.current || createPose();
-      startFrameLoop();
-
-      setStats((current) => ({
-        ...current,
-        feedback: "Kamera aktif. Mulai dari posisi atas dengan tubuh terlihat penuh.",
-        feedbackTone: "normal",
-      }));
     } catch (error) {
       console.error(error);
       stopFrameLoop();
@@ -672,8 +676,29 @@ function usePushUpCounter() {
         feedback: getCameraErrorMessage(error),
         feedbackTone: "error",
       }));
+      return;
     } finally {
       setIsLoading(false);
+    }
+
+    try {
+      poseRef.current = poseRef.current || createPose();
+      startFrameLoop();
+
+      setStats((current) => ({
+        ...current,
+        feedback: "Kamera aktif. Mulai dari posisi atas dengan tubuh terlihat penuh.",
+        feedbackTone: "normal",
+      }));
+    } catch (error) {
+      console.error(error);
+      setStats((current) => ({
+        ...current,
+        phase: "Kamera aktif",
+        feedback:
+          "Kamera aktif, tapi model pose gagal dimuat. Preview tetap menyala; counter belum bisa menghitung sampai model berhasil.",
+        feedbackTone: "warning",
+      }));
     }
   }, [cameraMode, createPose, setStats, startFrameLoop, stopFrameLoop]);
 
