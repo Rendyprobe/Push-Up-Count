@@ -621,7 +621,6 @@ function usePushUpCounter() {
     }));
 
     try {
-      poseRef.current = poseRef.current || createPose();
       stopFrameLoop();
 
       const stream = await getCameraStream(cameraMode);
@@ -639,10 +638,18 @@ function usePushUpCounter() {
       setIsRunning(true);
       setStats((current) => ({
         ...current,
+        feedback: "Kamera aktif. Menyiapkan model pose...",
+        feedbackTone: "normal",
+      }));
+
+      poseRef.current = poseRef.current || createPose();
+      startFrameLoop();
+
+      setStats((current) => ({
+        ...current,
         feedback: "Kamera aktif. Mulai dari posisi atas dengan tubuh terlihat penuh.",
         feedbackTone: "normal",
       }));
-      startFrameLoop();
     } catch (error) {
       console.error(error);
       stopFrameLoop();
