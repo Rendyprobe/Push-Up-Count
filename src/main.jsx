@@ -105,23 +105,25 @@ function formatDuration(totalSeconds) {
 }
 
 function getCameraErrorMessage(error) {
+  const errorDetail = error?.name ? ` (${error.name})` : "";
+
   if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
-    return "Izin kamera diblokir. Klik ikon gembok/setting di kiri address bar, ubah Camera ke Allow, lalu tekan Start lagi.";
+    return `Izin kamera diblokir${errorDetail}. Klik ikon gembok/setting di kiri address bar, ubah Camera ke Allow, lalu tekan Start lagi.`;
   }
 
   if (error?.name === "NotFoundError" || error?.name === "DevicesNotFoundError") {
-    return "Kamera tidak ditemukan. Pastikan webcam terpasang dan tidak dimatikan oleh sistem.";
+    return `Kamera tidak ditemukan${errorDetail}. Pastikan webcam terpasang dan tidak dimatikan oleh sistem.`;
   }
 
   if (error?.name === "NotReadableError" || error?.name === "TrackStartError") {
-    return "Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera/meeting lain lalu coba lagi.";
+    return `Kamera sedang dipakai aplikasi lain atau diblokir sistem${errorDetail}. Tutup aplikasi kamera/meeting lain lalu coba lagi.`;
   }
 
   if (error?.name === "OverconstrainedError" || error?.name === "ConstraintNotSatisfiedError") {
-    return "Mode kamera yang dipilih tidak tersedia. Coba ganti Kamera ke Depan atau Belakang.";
+    return `Mode kamera yang dipilih tidak tersedia${errorDetail}. Coba ganti Kamera ke Depan atau Belakang.`;
   }
 
-  return "Gagal membuka kamera. Pastikan halaman HTTPS, izin kamera Allow, dan browser punya akses ke webcam.";
+  return `Gagal membuka kamera${errorDetail}. Pastikan halaman HTTPS, izin kamera Allow, dan browser punya akses ke webcam.`;
 }
 
 function waitForVideoMetadata(video) {
@@ -130,7 +132,9 @@ function waitForVideoMetadata(video) {
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       video.removeEventListener("loadedmetadata", handleLoaded);
+      video.removeEventListener("canplay", handleLoaded);
       video.removeEventListener("error", handleError);
+      window.clearTimeout(timeoutId);
     };
     const handleLoaded = () => {
       cleanup();
@@ -140,10 +144,53 @@ function waitForVideoMetadata(video) {
       cleanup();
       reject(new Error("Video metadata gagal dimuat."));
     };
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      if (video.videoWidth || video.readyState >= 1) {
+        resolve();
+      } else {
+        reject(new Error("Timeout menunggu kamera aktif."));
+      }
+    }, 5000);
 
     video.addEventListener("loadedmetadata", handleLoaded, { once: true });
+    video.addEventListener("canplay", handleLoaded, { once: true });
     video.addEventListener("error", handleError, { once: true });
   });
+}
+
+async function getCameraStream(cameraMode) {
+  const attempts = [
+    {
+      audio: false,
+      video: {
+        facingMode: { ideal: cameraMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    },
+    {
+      audio: false,
+      video: {
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+      },
+    },
+    { audio: false, video: true },
+  ];
+
+  let lastError = null;
+
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+      if (error?.name === "NotAllowedError" || error?.name === "SecurityError") break;
+    }
+  }
+
+  throw lastError || new Error("Tidak ada kamera yang bisa dibuka.");
 }
 
 function calculateAngle(firstPoint, middlePoint, lastPoint) {
@@ -577,33 +624,25 @@ function usePushUpCounter() {
       poseRef.current = poseRef.current || createPose();
       stopFrameLoop();
 
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: { ideal: cameraMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await getCameraStream(cameraMode);
       streamRef.current = stream;
 
       const video = videoRef.current;
       video.srcObject = stream;
       video.muted = true;
       video.playsInline = true;
+      video.autoplay = true;
 
       await waitForVideoMetadata(video);
       await video.play();
 
-      startFrameLoop();
       setIsRunning(true);
       setStats((current) => ({
         ...current,
         feedback: "Kamera aktif. Mulai dari posisi atas dengan tubuh terlihat penuh.",
         feedbackTone: "normal",
       }));
+      startFrameLoop();
     } catch (error) {
       console.error(error);
       stopFrameLoop();
