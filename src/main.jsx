@@ -631,21 +631,42 @@ function App() {
 
   return (
     <main className="app-shell">
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">React + MediaPipe</p>
+          <h1>Push-Up Counter</h1>
+        </div>
+        <div className={`run-chip ${isRunning ? "is-live" : ""}`}>
+          <span aria-hidden="true" />
+          {isRunning ? "Kamera aktif" : "Siap mulai"}
+        </div>
+      </header>
+
       <section className="workspace" aria-label="Kamera penghitung push-up">
         <div className={`camera-panel ${isRunning ? "is-active" : ""}`}>
           <video ref={videoRef} className="input-video" playsInline muted />
           <canvas ref={canvasRef} className="output-canvas" width="1280" height="720" />
           <div className="camera-placeholder">
+            <Camera size={34} aria-hidden="true" />
             <span>Kamera belum aktif</span>
+          </div>
+          <div className="camera-hud" aria-label="Ringkasan sesi">
+            <div>
+              <span>Reps</span>
+              <strong>{stats.count}</strong>
+            </div>
+            <div>
+              <span>Durasi</span>
+              <strong>{formatDuration(elapsedSeconds)}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{stats.phase}</strong>
+            </div>
           </div>
         </div>
 
         <aside className="control-panel">
-          <header>
-            <p className="eyebrow">React + MediaPipe</p>
-            <h1>Push-Up Counter</h1>
-          </header>
-
           <div className="counter-block">
             <div>
               <span className="counter-label">Repetisi</span>
@@ -672,44 +693,46 @@ function App() {
 
           <p className={`feedback is-${stats.feedbackTone}`}>{stats.feedback}</p>
 
-          <div className="settings">
-            <label htmlFor="cameraMode">Kamera</label>
-            <select
-              id="cameraMode"
-              value={cameraMode}
-              disabled={isRunning || isLoading}
-              onChange={(event) => setCameraMode(event.target.value)}
-            >
-              <option value="user">Depan</option>
-              <option value="environment">Belakang</option>
-            </select>
-          </div>
+          <div className="settings-panel">
+            <div className="settings">
+              <label htmlFor="cameraMode">Kamera</label>
+              <select
+                id="cameraMode"
+                value={cameraMode}
+                disabled={isRunning || isLoading}
+                onChange={(event) => setCameraMode(event.target.value)}
+              >
+                <option value="user">Depan</option>
+                <option value="environment">Belakang</option>
+              </select>
+            </div>
 
-          <div className="tuning-grid">
-            <NumberField
-              id="targetCount"
-              label="Target"
-              min="1"
-              max="500"
-              value={settings.targetCount}
-              onChange={(value) => updateSetting("targetCount", value)}
-            />
-            <NumberField
-              id="downAngle"
-              label="Bawah"
-              min="60"
-              max="130"
-              value={settings.downAngle}
-              onChange={(value) => updateSetting("downAngle", value)}
-            />
-            <NumberField
-              id="upAngle"
-              label="Atas"
-              min="130"
-              max="180"
-              value={settings.upAngle}
-              onChange={(value) => updateSetting("upAngle", value)}
-            />
+            <div className="tuning-grid">
+              <NumberField
+                id="targetCount"
+                label="Target"
+                min="1"
+                max="500"
+                value={settings.targetCount}
+                onChange={(value) => updateSetting("targetCount", value)}
+              />
+              <NumberField
+                id="downAngle"
+                label="Bawah"
+                min="60"
+                max="130"
+                value={settings.downAngle}
+                onChange={(value) => updateSetting("downAngle", value)}
+              />
+              <NumberField
+                id="upAngle"
+                label="Atas"
+                min="130"
+                max="180"
+                value={settings.upAngle}
+                onChange={(value) => updateSetting("upAngle", value)}
+              />
+            </div>
           </div>
 
           <div className="actions">
