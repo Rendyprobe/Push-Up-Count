@@ -512,8 +512,9 @@ function usePushUpCounter() {
   );
 
   const createPose = useCallback(() => {
+    const poseAssetBase = `${import.meta.env.BASE_URL}mediapipe/pose/`;
     const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+      locateFile: (file) => `${poseAssetBase}${file}`,
     });
 
     pose.setOptions({
